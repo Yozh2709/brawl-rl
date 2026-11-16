@@ -463,9 +463,10 @@
     return Math.max(...s.score) >= G.c.MAX_SCORE ? 'goals' : 'lead at time';
   }
 
-  function LocalPlay(G, buf) {
-    const env = Env(G), net = Net(buf, G.net.shapes), c = G.c, P = G.P, NM = c.NDIR + 1, NB = 5;
-    const PRESS = ['atk', 'sup', 'gad', 'hyp'], label = `Net (${Math.round(G.net.samples / 1e6)}M)`;
+  function LocalPlay(G, buf, label) {                 // setNet(buf, label): the next newGame plays that net
+    const env = Env(G), c = G.c, P = G.P, NM = c.NDIR + 1, NB = 5, PRESS = ['atk', 'sup', 'gad', 'hyp'];
+    let net = Net(buf, G.net.shapes);
+    label = label || G.nets[0].label;
     let game = null, n = 0;
 
     function newGame() {
@@ -520,7 +521,8 @@
       return { frames: g.rep.frames.slice(d.k || 0), events: g.rep.events.slice(d.e || 0), result: g.rep.result };
     }
 
-    return { newGame, input, env, net };
+    const setNet = (b, l) => { net = Net(b, G.net.shapes); label = l; };
+    return { newGame, input, setNet, env };
   }
 
   const api = { Sim, Env, Net, heads, LocalPlay, snapshot };

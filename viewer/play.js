@@ -14,6 +14,31 @@
   const keys = new Set(), latch = { atk: false, sup: false, gad: false, hyp: false };
   let game = null, mc = null, top = false, busy = false, lastF = 0;   // mc: the mouse, client px
   let local = null;                                                    // no play server: BrawlSim.LocalPlay
+  let G = null, ver = null, pick = null, vtxt = '';                    // local: game.json, version label, net menu
+  const bins = {};
+  async function prep() {                                              // game.json, the version label, the net menu
+    if (G) return;
+    G = await fetch('web/game.json').then(r => r.json());
+    ver = document.createElement('div');                               // build id (tools/web_publish.sh) + net
+    ver.style.cssText = 'position:absolute;left:8px;bottom:6px;font-size:11px;color:var(--dim);pointer-events:none';
+    $('stage').appendChild(ver);
+    vtxt = (await fetch('web/version.txt', { cache: 'no-store' }).then(r => (r.ok ? r.text() : '')).catch(() => '')).trim();
+    ver.textContent = vtxt ? `v${vtxt}` : '';
+    if (G.nets.length > 1) {                                           // which net you play; a change mid-game = new game
+      pick = document.createElement('select');
+      pick.title = 'which net you play against';
+      G.nets.forEach(n => pick.add(new Option(n.label)));
+      pick.onchange = async () => { pick.blur(); if (!local) return; await useNet(pick.selectedIndex); start(); };
+      document.querySelector('header h1').after(pick);
+    }
+  }
+  prep().catch(() => {});
+  async function useNet(i) {                                           // local: the next game plays G.nets[i]
+    const n = G.nets[i];
+    bins[n.file] = bins[n.file] || await fetch('web/' + n.file).then(r => r.arrayBuffer());
+    if (local) local.setNet(bins[n.file], n.label); else local = BrawlSim.LocalPlay(G, bins[n.file], n.label);
+    ver.textContent = (vtxt ? `v${vtxt} · ` : '') + n.label;
+  }
   const in3d = () => mode === '3d' && view3;
   const flip = () => (in3d() && top ? -1 : 1);                         // screen -> world (3D camera turned 180°)
   const toWorld = ([x, y]) => {
@@ -29,17 +54,10 @@
     if (!local) {
       try {
         const r = await fetch('/play/new', { cache: 'no-store' });
-        if (r.ok) return await r.json();
+        if (r.ok) { if (pick) pick.remove(); return await r.json(); }
       } catch (e) {}
-      const [G, bin] = await Promise.all([fetch('web/game.json').then(r => r.json()), fetch('web/net.bin').then(r => r.arrayBuffer())]);
-      local = BrawlSim.LocalPlay(G, bin);
-      const ver = document.createElement('div');                       // build id (tools/web_publish.sh) + net
-      ver.style.cssText = 'position:absolute;left:8px;bottom:6px;font-size:11px;color:var(--dim);pointer-events:none';
-      ver.textContent = `Net (${Math.round(G.net.samples / 1e6)}M)`;
-      $('stage').appendChild(ver);
-      fetch('web/version.txt', { cache: 'no-store' }).then(r => (r.ok ? r.text() : '')).then(v => {
-        if (v.trim()) ver.textContent = `v${v.trim()} · ${ver.textContent}`;
-      }).catch(() => {});
+      await prep();
+      await useNet(pick ? pick.selectedIndex : 0);
     }
     return local.newGame();
   }

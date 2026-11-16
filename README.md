@@ -6,6 +6,7 @@ Neural bots you can play against, in the browser (phones too).
 
 Mortis vs Mortis, 1v1 Brawl Ball, against a small net trained with self-play PPO in a simulator.
 The game and the net run in your browser; no server.
+Two nets, **Net A** and **Net B**: pick one in the menu at the top. Which one is better is the question.
 
 ## Controls
 
