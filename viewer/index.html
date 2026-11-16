@@ -1,0 +1,314 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mortis Replays</title>
+<link href="https://fonts.googleapis.com/css2?family=Lilita+One&display=swap" rel="stylesheet">
+<style>
+  :root { --bg:#14161c; --panel:#1d2029; --line:#2c303c; --text:#e6e8ee; --dim:#8b91a1; --a:#3b82f6; --b:#ef4444; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font: 13px/1.35 system-ui, sans-serif; }
+  body { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; }
+  header { display: flex; gap: 10px; align-items: center; padding: 8px 12px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+  header h1 { font-size: 15px; margin: 0 8px 0 0; }
+  select, button { background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 4px 8px; font: inherit; cursor: pointer; }
+  button:hover, select:hover { border-color: #4b5263; }
+  .hint { color: var(--dim); margin-left: auto; }
+  main { display: grid; grid-template-columns: minmax(0, 1fr) 280px; min-height: 0; }
+  #cv { max-width: 100%; max-height: 100%; }
+  #stage { position: relative; display: flex; align-items: center; justify-content: center; min-height: 0; overflow: hidden; }
+  #banner { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); padding: 6px 16px; border-radius: 8px; font-weight: 700; font-size: 16px; background: #000c; display: none; }
+  #cv3, #ov { position: absolute; inset: 0; width: 100%; height: 100%; display: none; }
+  #ov { pointer-events: none; }
+  #drop { position: absolute; inset: 0; display: none; align-items: center; justify-content: center; background: #3b82f633; border: 3px dashed var(--a); font-size: 20px; }
+  aside { border-left: 1px solid var(--line); overflow: auto; padding: 10px; display: flex; flex-direction: column; gap: 10px; }
+  #cards { display: flex; flex-direction: column; gap: 8px; }
+  .card { background: var(--panel); border-radius: 8px; padding: 8px 10px; border-left: 4px solid; }
+  .card h3 { margin: 0 0 4px; font-size: 13px; }
+  .row { display: flex; justify-content: space-between; color: var(--dim); }
+  .row b { color: var(--text); font-weight: 600; }
+  #log { font-family: ui-monospace, Consolas, monospace; font-size: 12px; }
+  #log div { padding: 1px 4px; border-radius: 4px; cursor: pointer; white-space: nowrap; }
+  #log div:hover { background: var(--line); }
+  #log div.now { background: #fde04722; }
+  footer { padding: 8px 12px 10px; border-top: 1px solid var(--line); display: grid; grid-template-columns: auto auto 1fr auto; gap: 10px; align-items: center; }
+  #clock { font-family: ui-monospace, Consolas, monospace; min-width: 110px; }
+  #tl { position: relative; height: 34px; }
+  #tl input { position: absolute; inset: auto 0 0 0; width: 100%; margin: 0; }
+  #marks { position: absolute; left: 0; top: 0; width: 100%; height: 16px; }
+  @media (max-width: 760px) { main { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto; } aside { border-left: 0; border-top: 1px solid var(--line); max-height: 30vh; } #cards { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; } .hint { display: none; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>Mortis replays</h1>
+  <select id="pick"></select>
+  <span id="mapname" style="color:var(--dim)"></span>
+  <button id="mode" title="switch 2D / 3D">2D</button>
+  <button id="cam" title="reset the 3D camera">⟲ cam</button>
+  <span class="hint">3D: drag rotate, wheel zoom, right-drag pan · Space play · ←/→ tick (Shift ×10) · drop .json to open</span>
+</header>
+<main>
+  <div id="stage"><canvas id="cv"></canvas><canvas id="cv3"></canvas><canvas id="ov"></canvas><div id="banner"></div><div id="drop">Drop replay .json</div></div>
+  <aside>
+    <div id="cards"></div>
+    <div><div class="row" style="margin-bottom:4px"><b>Events</b><span>click = jump</span></div><div id="log"></div></div>
+  </aside>
+</main>
+<footer>
+  <button id="play">▶</button>
+  <span id="clock">0:00.0</span>
+  <div id="tl"><canvas id="marks"></canvas><input id="seek" type="range" min="0" max="0" step="1" value="0"></div>
+  <select id="speed"><option>0.25</option><option>0.5</option><option selected>1</option><option>2</option><option>4</option></select>
+</footer>
+<script type="importmap">{"imports": {"three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}</script>
+<script src="render.js"></script>
+<script type="module" src="render3d.js" onerror="mode = '2d'; applyMode(); $('mode').style.display = 'none'"></script>
+<script src="latest.js" onerror="window.REPLAYS = []"></script>
+<script>
+const $ = id => document.getElementById(id);
+const MR = window.MortisRender;
+const cv = $('cv'), ctx = cv.getContext('2d');
+let list = (window.REPLAYS || []).map((r, k) => ({ label: `#${k} ${resultText(r)}`, r }));
+let R = null, mapCanvas = null, px = 20, pos = 0, playing = false, lastT = 0;
+let mode = '3d', view3 = null, loading3 = false;
+try { mode = localStorage.getItem('mortisMode') || '3d'; } catch (e) {}
+
+function applyMode() {
+  const on = mode === '3d' && view3;
+  $('cv').style.display = on ? 'none' : '';
+  $('cv3').style.display = $('ov').style.display = on ? 'block' : 'none';
+  $('cam').style.display = on ? '' : 'none';
+  $('mode').textContent = mode === '3d' ? (view3 ? '2D' : 'loading 3D…') : '3D';
+}
+function want3d() {
+  if (view3 || loading3 || !window.MortisRender3D) return;
+  loading3 = true; applyMode();
+  MortisRender3D.init($('cv3'), $('ov'), () => { if (!playing) draw(); }).then(v => {
+    view3 = v; if (R) v.setReplay(R); applyMode(); layout(); draw();
+  }).catch(err => { console.error(err); view3 = null; mode = '2d'; applyMode(); $('mapname').textContent = '3D failed: ' + err.message; })
+    .finally(() => { loading3 = false; });
+}
+addEventListener('mortis3d', () => { if (mode === '3d') want3d(); });
+$('mode').onclick = () => {
+  mode = mode === '3d' ? '2d' : '3d';
+  try { localStorage.setItem('mortisMode', mode); } catch (e) {}
+  applyMode(); if (mode === '3d') want3d(); layout(); draw();
+};
+$('cam').onclick = () => { if (view3) { view3.resetCamera(); draw(); } };
+
+function resultText(r) {
+  const w = r.result ? r.result.winner : -2;
+  const s = (r.result ? r.result.ticks : r.frames.length) * r.tick_ms / 1000;
+  const names = r.mode === 'ball' ? MR.TEAM_NAME : ['A', 'B'];
+  const sc = r.result && r.result.score ? ` ${r.result.score.join(':')}` : '';
+  return (w === -1 ? 'draw' : w >= 0 ? names[w] + ' wins' : '?') + sc + ` ${s.toFixed(1)}s`;
+}
+function clock(t) { const s = t * R.tick_ms / 1000; return `${Math.floor(s / 60)}:${(s % 60).toFixed(1).padStart(4, '0')}`; }
+
+function fillPick() {
+  $('pick').innerHTML = list.map((x, k) => `<option value="${k}">${x.label}</option>`).join('');
+}
+
+function open(k) {
+  R = list[k].r; pos = 0; playing = false;
+  $('pick').value = k;
+  const T = R.players.length / 2, lineup = R.players.slice(0, T).map((_, p) => MR.brawler(R, p)).join(' + ');
+  $('mapname').textContent = R.mode === 'ball' ? `${R.map.name} · Brawl Ball ${T}v${T} · ${lineup}`
+    : `${R.map.name} · ${R.players.map(p => p.name).join(' vs ')}`;
+  $('seek').max = R.frames.length - 1;
+  if (view3) view3.setReplay(R);
+  layout(); drawLog(); draw();
+}
+
+function layout() {
+  if (!R) return;
+  const st = $('stage'), H = R.map.rows.length, W = R.map.rows[0].length;
+  if (view3) view3.resize(st.clientWidth, st.clientHeight);
+  px = Math.max(6, Math.floor(Math.min((st.clientWidth - 16) / W, (st.clientHeight - 16) / H)));
+  cv.width = W * px; cv.height = H * px;
+  mapCanvas = MR.buildMap(R, px);
+  drawMarks();
+}
+function drawMarks() {
+  const m = $('marks'); m.width = m.clientWidth; m.height = 16;
+  const g = m.getContext('2d'), n = R.frames.length - 1;
+  g.clearRect(0, 0, m.width, m.height);
+  for (const e of R.events) {
+    const [t, kind, a] = e;
+    const x = Math.round((t + 1) / n * (m.width - 1));
+    if (HITS.has(kind)) { g.fillStyle = MR.color(R, a); g.fillRect(x, 4, 2, 10); }
+    else if (kind === 'bats') { g.fillStyle = '#a855f7'; g.fillRect(x, 0, 3, 14); }
+    else if (kind === 'death') { g.fillStyle = '#fff'; g.fillRect(x - 1, 0, 3, 16); }
+    else if (kind === 'goal') { g.fillStyle = MR.TEAM[e[3]]; g.fillRect(x - 2, 0, 5, 16); }
+    else if (kind === 'overtime') { g.fillStyle = '#fde047'; g.fillRect(x - 2, 0, 5, 16); }
+  }
+}
+
+const HITS = new Set(['hit', 'shot_hit', 'spin_hit', 'debris_hit', 'turret_hit']);
+const EV = { hit: 'dash hits', bats: 'bats hit', shot_hit: 'hits', spin_hit: 'spins into', debris_hit: 'debris hits',
+  turret_hit: 'hits', burn: 'burns', slow: 'slows' };
+function evText(e) {
+  const [t, kind, a, b, amt] = e, P = R.players.length;
+  const who = kind === 'turret_hit' ? MR.tag(R, P + a) : a >= 0 ? MR.tag(R, a) : '';
+  if (kind === 'dash') return `${who} dash ${amt}`;
+  if (kind === 'shot') return `${who} shoots`;
+  if (kind === 'gadget') return `${who} GADGET ${MR.pretty(R.players[a].gadget) || ''}`;
+  if (kind === 'hyper') return `${who} HYPERCHARGE`;
+  if (kind === 'turret') return `${who} places a turret`;
+  if (kind === 'turret_heal') return `${who} heals ${MR.tag(R, b)}`;
+  if (kind === 'turret_down') return `${MR.tag(R, b)} destroyed${who ? ' by ' + who : ''}`;
+  if (kind === 'slow') return `${who} slows ${MR.tag(R, b)}`;
+  if (kind === 'super') return `${who} SUPER`;
+  if (kind === 'heal') return `${who} +${amt}`;
+  if (kind === 'death') return `${who} KO`;
+  if (kind === 'kick') return `${who} kicks`;
+  if (kind === 'superkick') return `${who} SUPER KICK`;
+  if (kind === 'pick') return `${who} has the ball`;
+  if (kind === 'drop') return `${who} drops the ball`;
+  if (kind === 'respawn') return `${who} respawns`;
+  if (kind === 'goal') return `GOAL ${MR.TEAM_NAME[b]} (${who}) · ${amt}`;
+  if (kind === 'overtime') return 'OVERTIME';
+  return `${who} ${EV[kind]} ${MR.tag(R, b)} −${amt}`;
+}
+function evColor(e) {
+  if (e[1] === 'death' || e[1] === 'respawn') return '#fff';
+  if (e[1] === 'goal') return MR.TEAM[e[3]];
+  if (e[1] === 'overtime') return '#fde047';
+  return MR.color(R, e[2]);
+}
+const QUIET = new Set(['dash', 'heal', 'shot', 'miss', 'burn', 'turret_heal']);   // too many in a 3v3 log
+function drawLog() {
+  const ev = R.mode === 'ball' ? R.events.filter(e => !QUIET.has(e[1])) : R.events;
+  $('log').innerHTML = ev.map((e, k) =>
+    `<div data-t="${e[0] + 1}" style="color:${evColor(e)};${e[1] === 'goal' ? 'font-weight:700' : ''}">${clock(e[0] + 1).padStart(7)}  ${evText(e)}</div>`).join('');
+  for (const d of $('log').children) d.onclick = () => { pos = +d.dataset.t; playing = false; draw(); };
+}
+
+function cards(F) {
+  if (R.mode === 'ball') {
+    const pc = v => Math.round(Math.min(1, v) * 100) + '%';
+    $('cards').innerHTML = F.players.map((P, p) => {
+      const pl = R.players[p], kit = pl.gadget ? `<div class="row" style="font-size:11px">${MR.pretty(pl.gadget)} ×${P.gad ?? '?'} · ${MR.pretty(pl.star_power)}</div>` : '';
+      const tu = F.tu.find(t => t[0] === p);
+      return `
+    <div class="card" style="border-color:${MR.color(R, p)};padding:5px 8px">
+      <h3 style="color:${MR.color(R, p)};margin:0">${MR.tag(R, p)} · ${pl.name}${F.ball && F.ball.carrier === p ? ' ⚽' : ''}</h3>
+      <div class="row">${P.hp <= 0 ? `<b>KO · back in ${Math.ceil(P.resp * R.tick_ms / 1000)} s</b>` :
+        `HP <b>${Math.round(P.hp)}</b> ammo <b>${P.ammo.toFixed(1)}</b> super <b>${pc(P.ulti)}</b>` +
+        (P.hyper !== undefined ? ` hyper <b>${P.hon > 0 ? 'ON' : pc(P.hyper)}</b>` : '')}</div>${kit}
+      ${tu ? `<div class="row" style="font-size:11px">turret <b>${tu[3]}</b></div>` : ''}
+    </div>`;
+    }).join('');
+    return;
+  }
+  $('cards').innerHTML = F.players.map((P, p) => `
+    <div class="card" style="border-color:${MR.TEAM[p]}">
+      <h3 style="color:${MR.TEAM[p]}">${'AB'[p]} · ${R.players[p].name}</h3>
+      <div class="row">HP <b>${Math.round(P.hp)} / ${R.consts.hp}</b></div>
+      <div class="row">Ammo <b>${P.ammo.toFixed(2)} / ${R.consts.ammo}</b></div>
+      <div class="row">Super <b>${Math.round(Math.min(1, P.ulti) * 100)}%</b></div>
+      <div class="row">Long dash <b>${P.long ? 'ready' : Math.round(P.bar * 100) + '%'}</b></div>
+      <div class="row">State <b>${P.hp <= 0 ? 'KO' : [P.dash ? 'dashing' : '', P.hidden ? 'hidden' : ''].filter(Boolean).join(', ') || '—'}</b></div>
+    </div>`).join('');
+}
+
+function draw() {
+  if (!R) return;
+  const i = Math.max(0, Math.min(R.frames.length - 1, pos));
+  if (mode === '3d' && view3) view3.draw(R, i);
+  else MR.drawFrame(ctx, R, i, { px, map: mapCanvas });
+  const F = MR.unpack(R, Math.round(i));
+  cards(F);
+  $('seek').value = Math.round(i);
+  $('clock').textContent = clock(F.t) + (playing ? '' : ` · t${Math.round(i)}`);
+  $('play').textContent = playing ? '❚❚' : '▶';
+  const last = i >= R.frames.length - 1, end = last && R.result, wait = last && !R.result && R.live && R.live.wait.length;
+  const b = $('banner');
+  b.style.display = end || wait ? 'block' : 'none';
+  if (wait) { b.textContent = `LIVE · thinking: ${R.live.wait.join(', ')}`; b.style.color = '#fde047'; }
+  if (end) {
+    const w = R.result.winner;
+    const names = R.mode === 'ball' ? MR.TEAM_NAME : ['A', 'B'], sc = R.result.score ? ` ${R.result.score.join(':')}` : '';
+    b.textContent = w === -1 ? `Draw${sc} (${R.result.reason})` : `${names[w]} wins${sc} by ${R.result.reason}`;
+    b.style.color = w >= 0 ? MR.TEAM[w] : '#fff';
+  }
+  const ti = Math.round(i);
+  let near = null;
+  for (const d of $('log').children) { const on = +d.dataset.t <= ti; d.classList.toggle('now', false); if (on) near = d; }
+  if (near) { near.classList.add('now'); if (playing) near.scrollIntoView({ block: 'nearest' }); }
+}
+
+function loop(now) {
+  if (playing && R) {
+    pos += (now - lastT) / R.tick_ms * +$('speed').value;
+    if (pos >= R.frames.length - 1) { pos = R.frames.length - 1; playing = false; }
+    draw();
+  }
+  lastT = now;
+  requestAnimationFrame(loop);
+}
+
+$('pick').onchange = e => open(+e.target.value);
+$('play').onclick = () => { if (pos >= R.frames.length - 1) pos = 0; playing = !playing; draw(); };
+$('seek').oninput = e => { pos = +e.target.value; playing = false; draw(); };
+addEventListener('keydown', e => {
+  if (!R || e.target.tagName === 'SELECT') return;
+  if (e.code === 'Space') { e.preventDefault(); $('play').click(); }
+  else if (e.code === 'ArrowRight' || e.code === 'ArrowLeft') {
+    e.preventDefault(); playing = false;
+    pos = Math.round(pos) + (e.code === 'ArrowRight' ? 1 : -1) * (e.shiftKey ? 10 : 1);
+    pos = Math.max(0, Math.min(R.frames.length - 1, pos)); draw();
+  } else if (e.code === 'Home') { pos = 0; draw(); }
+  else if (e.code === 'End') { pos = R.frames.length - 1; draw(); }
+});
+new ResizeObserver(() => { layout(); draw(); }).observe($('stage'));
+addEventListener('dragover', e => { e.preventDefault(); $('drop').style.display = 'flex'; });
+addEventListener('dragleave', e => { if (!e.relatedTarget) $('drop').style.display = 'none'; });
+addEventListener('drop', async e => {
+  e.preventDefault(); $('drop').style.display = 'none';
+  const start = list.length;
+  for (const f of e.dataTransfer.files) {
+    try { const r = JSON.parse(await f.text()); list.push({ label: `${f.name} · ${resultText(r)}`, r }); }
+    catch (err) { alert(`${f.name}: ${err.message}`); }
+  }
+  fillPick(); if (list.length > start) open(start);
+});
+
+// live: llm_match.py rewrites live.json during a match; poll it, keep the same replay object and play on
+let liveR = null;
+async function pollLive() {
+  let r = null;
+  try { r = await (await fetch('live.json', { cache: 'no-store' })).json(); } catch (e) {}
+  if (r && !liveR && !r.result) {
+    liveR = r;
+    list.unshift({ label: 'LIVE match', r });
+    fillPick(); open(0); playing = true;
+  } else if (r && liveR && (r.frames.length > liveR.frames.length || r.result)) {
+    const follow = playing || pos >= liveR.frames.length - 1.5;
+    Object.assign(liveR, r);
+    if (R === liveR) {
+      $('seek').max = R.frames.length - 1;
+      if (view3) view3.refresh(R);
+      drawMarks(); drawLog();
+      if (follow) playing = true;
+      draw();
+    }
+  }
+  if (!(liveR && liveR.result)) setTimeout(pollLive, 1000);
+}
+
+fillPick();
+applyMode();
+if (window.MortisRender3D && mode === '3d') want3d();
+if (list.length) open(0);
+else $('mapname').textContent = 'no replays: run run.py or drop a .json here';
+requestAnimationFrame(loop);
+if (!new URLSearchParams(location.search).has('play')) pollLive();
+</script>
+<script src="sim.js"></script>
+<script src="play.js"></script>
+</body>
+</html>
