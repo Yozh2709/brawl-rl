@@ -470,7 +470,7 @@
 
     function newGame() {
       if (game) clearInterval(game.timer);
-      const me = n % 2 * (P / 2), side = G.team[me], es = env.reset();
+      const me = 0, side = G.team[me], es = env.reset();
       const rep = structuredClone(G.header);
       rep.players.forEach((pl, p) => { pl.name = p === me ? 'You' : label; });
       Object.assign(rep, { me, side, id: n++, frames: [snapshot(env, es)], events: [], result: null });
