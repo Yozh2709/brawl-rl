@@ -33,6 +33,13 @@
       } catch (e) {}
       const [G, bin] = await Promise.all([fetch('web/game.json').then(r => r.json()), fetch('web/net.bin').then(r => r.arrayBuffer())]);
       local = BrawlSim.LocalPlay(G, bin);
+      const ver = document.createElement('div');                       // build id (tools/web_publish.sh) + net
+      ver.style.cssText = 'position:absolute;left:8px;bottom:6px;font-size:11px;color:var(--dim);pointer-events:none';
+      ver.textContent = `Net (${Math.round(G.net.samples / 1e6)}M)`;
+      $('stage').appendChild(ver);
+      fetch('web/version.txt', { cache: 'no-store' }).then(r => (r.ok ? r.text() : '')).then(v => {
+        if (v.trim()) ver.textContent = `v${v.trim()} · ${ver.textContent}`;
+      }).catch(() => {});
     }
     return local.newGame();
   }
