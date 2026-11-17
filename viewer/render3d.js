@@ -47,7 +47,31 @@ function only(scene, keep) {     // keep one named node (e.g. a grass variant), 
   return s;
 }
 
-export async function init(canvas, overlay, redraw) {
+// every model and sprite sheet as Blobs, in parallel; onLoad(0..1) = bytes so far (sizes not yet known: the average)
+async function fetchAll(urls, onLoad) {
+  const got = urls.map(() => 0), size = urls.map(() => 0);
+  let shown = 0;
+  const tick = () => {
+    const known = size.filter(Boolean), avg = known.length ? known.reduce((a, b) => a + b) / known.length : 1;
+    const all = size.reduce((a, b) => a + (b || avg), 0), have = got.reduce((a, g, i) => a + Math.min(g, size[i] || avg), 0);
+    const p = Math.min(0.99, have / all);
+    if (p > shown + 0.005) { shown = p; onLoad(p); }
+  };
+  return Promise.all(urls.map(async (u, i) => {
+    const r = await fetch(u);
+    if (!r.ok) throw new Error(`${u}: ${r.status}`);
+    size[i] = +r.headers.get('content-length') || 1;
+    const rd = r.body.getReader(), parts = [];
+    for (;;) {
+      const { done, value } = await rd.read();
+      if (done) break;
+      parts.push(value); got[i] += value.length; tick();
+    }
+    return new Blob(parts);
+  }));
+}
+
+export async function init(canvas, overlay, redraw, onLoad = () => {}) {
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
   renderer.setPixelRatio(Math.min(2, devicePixelRatio));
   renderer.shadowMap.enabled = true;
@@ -68,8 +92,11 @@ export async function init(canvas, overlay, redraw) {
   sun.shadow.bias = -0.0005;
   scene.add(sun, sun.target);
 
+  const FX = await fetch('fx/fx.json').then(r => r.json()), fxKeys = Object.keys(FX);
+  const blobs = await fetchAll([...MODELS.map(n => `models/${n}.glb`), ...fxKeys.map(k => `fx/${k}.png`)], onLoad);
   const loader = new GLTFLoader();
-  const G = Object.fromEntries(await Promise.all(MODELS.map(async n => [n, await loader.loadAsync(`models/${n}.glb`)])));
+  const G = Object.fromEntries(await Promise.all(MODELS.map(async (n, i) =>
+    [n, await loader.parseAsync(await blobs[i].arrayBuffer(), 'models/')])));
   paint(G.hub_wall.scene, '#a07a55');
   paint(G.indestructible.scene, '#6f7480');
   paint(G.hub_grass.scene, '#4f9a3c');
@@ -113,10 +140,10 @@ export async function init(canvas, overlay, redraw) {
   // shots, effects, rings, zones, HUD bars: the game's own sprites (blue / red variant), cut from its .sc files by
   // tools/fx_export.py into fx/<key><team>.png sheets. Directed ones lie flat on the ground plane, head along the
   // flight; BILL ones face the camera; all but GROUND ones draw over bushes and walls like the game's 2D layer
-  const FX = await fetch('fx/fx.json').then(r => r.json());
   const texLoader = new THREE.TextureLoader();
-  const FXT = Object.fromEntries(await Promise.all(Object.keys(FX).map(async k => {
-    const t = await texLoader.loadAsync(`fx/${k}.png`); t.colorSpace = THREE.SRGBColorSpace; return [k, t];
+  const FXT = Object.fromEntries(await Promise.all(fxKeys.map(async (k, i) => {
+    const u = URL.createObjectURL(blobs[MODELS.length + i]);
+    const t = await texLoader.loadAsync(u); URL.revokeObjectURL(u); t.colorSpace = THREE.SRGBColorSpace; return [k, t];
   })));
   const BILL = new Set(['hit', 'hit_el', 'death', 'spawn', 'kick', 'superkick', 'fire', 'hyper', 'tur_in', 'tur_out', 'throw']);
   const GROUND = new Set(['ring', 'zone', 'spark']); // under the brawlers: depth-tested
