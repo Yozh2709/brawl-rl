@@ -222,10 +222,11 @@ export async function init(canvas, overlay, redraw, onLoad = () => {}) {
   }
 
   // keep the players in view: slide target and camera together along the map (no rotation change)
-  function follow(R, F) {          // brawl ball: follow the ball
-    const alive = F.players.filter(P => P.hp > 0), h = R.map.rows.length;
+  function follow(R, F) {          // brawl ball: follow the ball; play mode: you while alive
+    const alive = F.players.filter(P => P.hp > 0), h = R.map.rows.length, me = F.players[R.me];
     if (!alive.length && !F.ball) return;
-    const z = F.ball ? F.ball.y / R.tile - .5 : alive.reduce((s, P) => s + P.y / R.tile - .5, 0) / alive.length;
+    const z = me && me.hp > 0 ? me.y / R.tile - .5
+      : F.ball ? F.ball.y / R.tile - .5 : alive.reduce((s, P) => s + P.y / R.tile - .5, 0) / alive.length;
     const lo = Math.min(h / 2 - .5, VIEW_ROWS / 2 - 2), hi = Math.max(h / 2 - .5, h - VIEW_ROWS / 2 + 1);
     const dz = Math.max(lo, Math.min(hi, z)) - controls.target.z;
     controls.target.z += dz; camera.position.z += dz;
@@ -465,7 +466,7 @@ export async function init(canvas, overlay, redraw, onLoad = () => {}) {
     resetCamera() { if (Rcur) frameCamera(Rcur); },
     // play mode: the game's fixed camera (clicks must not orbit it), turned 180° when your goal is at the top
     playView(f) { controls.enabled = false; if (f !== flip) { flip = f; if (Rcur) frameCamera(Rcur); } },
-    setAim(R, v) { aimR = R; aimV = v && (v[0] || v[1]) ? v : null; },
+    setAim(R, v, sup) { aimR = R; aimV = v && (v[0] || v[1]) ? v : null; aimMesh.material.color.set(sup ? '#facc15' : '#ffffff'); },   // yellow: the super
     toWorld(x, y, R) {                // a screen point -> game units on the ground
       const b = canvas.getBoundingClientRect(), ray = new THREE.Raycaster(), p = new THREE.Vector3();
       ray.setFromCamera(new THREE.Vector2((x - b.left) / b.width * 2 - 1, 1 - (y - b.top) / b.height * 2), camera);
