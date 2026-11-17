@@ -1,18 +1,19 @@
 // index.html?play: you vs the net. Served and stepped by rl/jplay.py (python rl/jplay.py, port 8766); with no play
 // server (GitHub Pages) the sim and the net run in the page (sim.js + web/game.json + web/net.bin, tools/web_export.py).
-// WASD move, mouse aim, LMB attack (dash), RMB super, E gadget, Q hypercharge, Enter = new game.
+// WASD move, hold LMB (attack, dash) / RMB (super) to aim, release to fire, E gadget, Q hypercharge, Enter = new game.
 // Touch: a move stick anywhere on the left, ATK / SUPER you drag to aim and release (a tap aims itself: with the ball
 // at their goal, else at the nearest enemy you see), GADGET and HYPER taps.
 // 3D: fixed game camera, turned 180° when you spawn in the top half (WASD and aim follow the screen).
 // Uses index.html's globals (R, list, pos, mode, px, open, draw, ...).
 (() => {
   if (!new URLSearchParams(location.search).has('play')) return;
-  const KEYS = 'WASD move · mouse aim · LMB attack · RMB super · E gadget · Q hypercharge · Enter new game';
+  const KEYS = 'WASD move · hold LMB attack / RMB super to aim, release to fire · E gadget · Q hypercharge · Enter new game';
   document.querySelector('.hint').textContent = KEYS;
   document.title = 'Mortis vs a neural net'; document.querySelector('header h1').textContent = 'Mortis vs a neural net';
   $('pick').style.display = 'none';
   const keys = new Set(), latch = { atk: false, sup: false, gad: false, hyp: false };
   let game = null, mc = null, top = false, busy = false, lastF = 0;   // mc: the mouse, client px
+  let hold = -1;                                                       // the mouse button held to aim: 0 attack, 2 super
   let local = null;                                                    // no play server: BrawlSim.LocalPlay
   let G = null, ver = null, pick = null, vtxt = '';                    // local: game.json, version label, net menu
   let bm = null;                                                       // local, multi: brawler menu (yours vs the net's)
@@ -109,6 +110,7 @@
     body.touch #tc { display: block; }
     body.touch #stage { touch-action: none; user-select: none; -webkit-user-select: none; align-items: flex-start; }
     body.touch aside, body.touch footer, body.touch .hint, body.touch #mapname { display: none; }
+    #events { display: none; }
     body.touch main { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
     #stick { position: absolute; width: 120px; height: 120px; margin: -60px; border-radius: 50%; border: 2px solid #fff6; background: #0003; display: none; }
     #knob { position: absolute; left: 50%; top: 50%; width: 50px; height: 50px; margin: -25px; border-radius: 50%; background: #fff8; }
@@ -216,7 +218,7 @@
       const end = R.frames.length - 1;
       pos = Math.min(end, Math.max(end - 2, pos + (now - lastF) / R.tick_ms));   // ~1 tick behind, smooth
       if (view3) view3.playView(top);
-      const u = px / R.tile, P = MR.unpack(R, pos).players[R.me], mw = mouseW(), mouse = !in3d() && mw;
+      const u = px / R.tile, P = MR.unpack(R, pos).players[R.me], mw = hold >= 0 && mouseW(), mouse = !in3d() && mw;
       const drag = [...ptr.values()].find(t => t.k !== 'stick' && t.v);
       if (view3) view3.setAim(R, !in3d() || P.hp <= 0 ? null : drag ? [flip() * drag.v[0], flip() * drag.v[1]]   // 3D aim bar
         : !isTouch() && mw ? [mw[0] - P.x, mw[1] - P.y] : null);
@@ -257,8 +259,12 @@
     e.preventDefault();
     if (!game || game.result) { if (!game) start(); return; }
     mc = [e.clientX, e.clientY];
-    if (e.button === 0) latch.atk = true;
-    else if (e.button === 2) latch.sup = true;
+    if (e.button === 0 || e.button === 2) hold = e.button;           // aim while held, fire on release
+  });
+  addEventListener('mouseup', e => {
+    if (e.button !== hold) return;
+    hold = -1;
+    if (game && !game.result) { mc = [e.clientX, e.clientY]; latch[e.button ? 'sup' : 'atk'] = true; }
   });
   addEventListener('keydown', e => {
     if (e.code === 'Enter' && (!game || game.result)) { e.preventDefault(); start(); return; }
@@ -267,5 +273,5 @@
     keys.add(e.code);
   });
   addEventListener('keyup', e => keys.delete(e.code));
-  addEventListener('blur', () => { keys.clear(); ptr.clear(); $('stick').style.display = 'none'; });
+  addEventListener('blur', () => { keys.clear(); ptr.clear(); hold = -1; $('stick').style.display = 'none'; });
 })();
