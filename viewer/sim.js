@@ -609,7 +609,8 @@
         for (let i = qs.length; i < n; i++) put(...fn(0).map(() => 0));
       };
       rows(mate, ar.filter(q => team[q] === k && q !== p).slice(0, G.T - 1), MT - 1);
-      rows(foe, ar.filter(q => team[q] !== k).slice(0, G.T), MT);
+      const foes = ar.filter(q => team[q] !== k).slice(0, G.T);
+      rows(foe, foes, MT);
       if (mt) {
         const nearest = (on, pts, n) => fill(on.length, i => i).map(i => [on[i] ? dist(pts[i], me) : Infinity, i])
           .sort((x, y) => x[0] - y[0]).slice(0, n).map(x => x[1]);
@@ -634,6 +635,10 @@
         blk.push(!inb || !!G.block[oi][i]); bsh.push(inb && !!G.bush[oi][i]);
       }
       put(...blk, ...bsh, cp[0] - c0[0], cp[1] - c0[1]);
+      if (mt) for (let i = 0; i < MT; i++) {   // foe ammo when seen (last: older nets got 0 weights for it)
+        const q = foes[i];
+        put(q === undefined ? 0 : es.vis[p][q] * (s.ammo[q] + s.reload[q] / K.RELOAD[kd[q]]) / c.AMMO);
+      }
       if (o.length !== G.obs_dim) throw new Error(`obs ${o.length} != ${G.obs_dim}`);
       return Float32Array.from(o);
     }
