@@ -4,9 +4,10 @@ Neural bots you can play against, in the browser (phones too).
 
 **Play: https://yozh2709.github.io/brawl-rl/**
 
-Mortis vs Mortis, 1v1 Brawl Ball, against a small net trained with self-play PPO in a simulator.
+1v1 Brawl Ball against a small net trained with self-play PPO in a simulator.
 The game and the net run in your browser; no server.
-Two nets, **Net A** and **Net B**: pick one in the menu at the top. Which one is better is the question.
+Brawlers: **Mortis**, **Stu** and **Jessie**. Pick yours and the net's in the menu at the top (Random by default);
+a link like `?play&me=S&net=J` presets them.
 
 ## Controls
 

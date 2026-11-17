@@ -15,6 +15,7 @@
   let game = null, mc = null, top = false, busy = false, lastF = 0;   // mc: the mouse, client px
   let local = null;                                                    // no play server: BrawlSim.LocalPlay
   let G = null, ver = null, pick = null, vtxt = '';                    // local: game.json, version label, net menu
+  let bm = null;                                                       // local, multi: brawler menu (yours vs the net's)
   const bins = {};
   async function prep() {                                              // game.json, the version label, the net menu
     if (G) return;
@@ -30,6 +31,26 @@
       G.nets.forEach(n => pick.add(new Option(n.label)));
       pick.onchange = async () => { pick.blur(); if (!local) return; await useNet(pick.selectedIndex); start(); };
       document.querySelector('header h1').after(pick);
+    }
+    if (G.multi) {                                                     // brawlers: Random or one of G.kinds, ?me=S&net=J preset
+      const q = new URLSearchParams(location.search), t = 'Brawl Ball vs a neural net';
+      document.title = t; document.querySelector('header h1').textContent = t;
+      bm = document.createElement('span');
+      bm.style.cssText = 'display:flex;gap:6px;align-items:center';
+      const sel = who => {
+        const s = document.createElement('select');
+        s.title = who === 'me' ? 'your brawler' : "the net's brawler";
+        s.add(new Option('Random', ''));
+        for (const c of G.kinds) s.add(new Option(G.labels[G.letters.indexOf(c)], c));
+        s.value = (q.get(who) || '').toUpperCase();
+        if (s.selectedIndex < 0) s.value = '';
+        s.onchange = () => { s.blur(); if (local) start(); };          // a change mid-game = new game
+        return s;
+      };
+      const vs = document.createElement('span');
+      vs.textContent = 'vs'; vs.style.color = 'var(--dim)';
+      bm.append(sel('me'), vs, sel('net'));
+      document.querySelector('header h1').after(bm);
     }
   }
   prep().catch(() => {});
@@ -53,13 +74,14 @@
   async function newGame() {
     if (!local) {
       try {
-        const r = await fetch('/play/new', { cache: 'no-store' });
-        if (r.ok) { if (pick) pick.remove(); return await r.json(); }
+        const r = await fetch('/play/new' + location.search, { cache: 'no-store' });   // ?play&me=S&net=J (rl.jplay)
+        if (r.ok) { if (pick) pick.remove(); if (bm) bm.remove(); return await r.json(); }
       } catch (e) {}
       await prep();
       await useNet(pick ? pick.selectedIndex : 0);
     }
-    return local.newGame();
+    const q = new URLSearchParams(location.search), s = bm ? bm.querySelectorAll('select') : null;
+    return local.newGame(s ? { me: s[0].value, net: s[1].value } : { me: q.get('me'), net: q.get('net') });
   }
 
   async function start() {
