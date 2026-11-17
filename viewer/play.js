@@ -187,9 +187,11 @@
       const end = R.frames.length - 1;
       pos = Math.min(end, Math.max(end - 2, pos + (now - lastF) / R.tick_ms));   // ~1 tick behind, smooth
       if (view3) view3.playView(top);
-      draw();
-      const u = px / R.tile, P = MR.unpack(R, pos).players[R.me], mouse = !in3d() && mouseW();
+      const u = px / R.tile, P = MR.unpack(R, pos).players[R.me], mw = mouseW(), mouse = !in3d() && mw;
       const drag = [...ptr.values()].find(t => t.k !== 'stick' && t.v);
+      if (view3) view3.setAim(R, !in3d() || P.hp <= 0 ? null : drag ? [flip() * drag.v[0], flip() * drag.v[1]]   // 3D aim bar
+        : !isTouch() && mw ? [mw[0] - P.x, mw[1] - P.y] : null);
+      draw();
       const tgt = drag && !in3d() ? [P.x + drag.v[0] * R.consts.dash_range, P.y + drag.v[1] * R.consts.dash_range] : mouse;
       if (tgt && P.hp > 0) {                                                      // aim line (2D)
         ctx.strokeStyle = '#fff8'; ctx.lineWidth = 2; ctx.setLineDash([6, 6]);
