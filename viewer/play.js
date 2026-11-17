@@ -17,13 +17,20 @@
   let G = null, ver = null, pick = null, vtxt = '';                    // local: game.json, version label, net menu
   let bm = null;                                                       // local, multi: brawler menu (yours vs the net's)
   const bins = {};
+  const V = new URL(document.currentScript.src).searchParams.get('v') || '';   // this page's build (web_publish.sh: play.js?v=)
+  const vq = V ? `?v=${V}` : '';                                       // its files, never older ones from the cache
   async function prep() {                                              // game.json, the version label, the net menu
     if (G) return;
-    G = await fetch('web/game.json').then(r => r.json());
+    const now = (await fetch('web/version.txt', { cache: 'no-store' }).then(r => (r.ok ? r.text() : '')).catch(() => '')).trim();
+    const q = new URLSearchParams(location.search);
+    if (V && now && now !== V && q.get('v') !== now) {                 // an older page from the cache: once, as a new URL
+      q.set('v', now); location.replace('?' + q); return;
+    }
+    vtxt = V ? V + (now && now !== V ? ' (old)' : '') : now;
+    G = await fetch('web/game.json' + vq).then(r => r.json());
     ver = document.createElement('div');                               // build id (tools/web_publish.sh) + net
     ver.style.cssText = 'position:absolute;left:8px;bottom:6px;font-size:11px;color:var(--dim);pointer-events:none';
     $('stage').appendChild(ver);
-    vtxt = (await fetch('web/version.txt', { cache: 'no-store' }).then(r => (r.ok ? r.text() : '')).catch(() => '')).trim();
     ver.textContent = vtxt ? `v${vtxt}` : '';
     if (G.nets.length > 1) {                                           // which net you play; a change mid-game = new game
       pick = document.createElement('select');
@@ -56,7 +63,7 @@
   prep().catch(() => {});
   async function useNet(i) {                                           // local: the next game plays G.nets[i]
     const n = G.nets[i];
-    bins[n.file] = bins[n.file] || await fetch('web/' + n.file).then(r => r.arrayBuffer());
+    bins[n.file] = bins[n.file] || await fetch('web/' + n.file + vq).then(r => r.arrayBuffer());
     if (local) local.setNet(bins[n.file], n.label); else local = BrawlSim.LocalPlay(G, bins[n.file], n.label);
     ver.textContent = (vtxt ? `v${vtxt} · ` : '') + n.label;
   }
