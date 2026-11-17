@@ -444,12 +444,14 @@
 
   // ---------------------------------------------------------------- a game you play in the page (rl/jplay.py Game)
   function snapshot(env, es) {                 // Match.snapshot: one viewer frame
-    const s = es.s, c = env.G.c, T = env.G.T, t = s.t;
+    const s = es.s, c = env.G.c, T = env.G.T, t = s.t, bush = env.b.grids(s)[2];
+    // hidden: the enemies don't see you; with no enemy alive (dead see nothing): in a bush and not revealed
+    const shown = q => es.vis[(1 - env.G.team[q]) * T][q] || !env.b.inBush(bush, s.pos[q]) || t < s.reveal_until[q];
     const p = s.pos.map((x, q) => {
       const e = (1 - env.G.team[q]) * T, ra = s.respawn_at[q], r3 = v => Math.round(v * 1000) / 1000;
       return [Math.round(x[0]), Math.round(x[1]), Math.round(s.hp[q]), r3(s.ammo[q] + s.reload[q] / c.RELOAD),
               r3(clip((t - s.last_attack[q]) / c.LONG_TICKS, 0, 1)), +env.b.longReady(s, q), Math.round(s.ulti[q] * 1e4) / 1e4,
-              +(s.dash_rem[q] > 0), +!es.vis[e][q], ra >= 0 ? Math.max(0, ra - t) : 0, r3(s.hyper[q]),
+              +(s.dash_rem[q] > 0), +!shown(q), ra >= 0 ? Math.max(0, ra - t) : 0, r3(s.hyper[q]),
               Math.max(0, s.hyper_until[q] - t), s.gad_left[q], 0];
     });
     return { t, p, b: s.proj_pos.map((x, q) => [+s.proj_on[q], Math.round(x[0]), Math.round(x[1])]),
